@@ -1,0 +1,54 @@
+name: Build Massenger T APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base:
+        description: "Backend URL, e.g. https://your-domain.example (include no trailing slash)"
+        required: true
+        type: string
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate Android platform files
+        working-directory: mobile
+        run: flutter create --platforms=android --project-name massenger_t .
+
+      - name: Allow HTTP for development backend
+        working-directory: mobile
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          s = p.read_text()
+          s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
+          p.write_text(s)
+          PY
+
+      - name: Get dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: mobile
+        env:
+          API_BASE: ${{ inputs.api_base }}
+        run: flutter build apk --release --dart-define=API_BASE="$API_BASE"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MassengerT-android-apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
